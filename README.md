@@ -118,25 +118,23 @@ Given we are dealing with equity markets, we also include the GJR-GARCH model ([
 
 In the GJR-GARCH(1,1) specification we again assume that current variance depends on the three parameters lagged by 1 time period:
 
-$$\sigma^2_t = \omega + \alpha \varepsilon^2_{t-1} + \gamma \varepsilon^2_{t-1} \mathbf{1}_{[\varepsilon_{t-1} < 0]} + \beta \sigma^2_{t-1}$$
+$$\sigma^2_t = \omega + \alpha \varepsilon^2_{t-1} + \gamma \varepsilon^2_{t-1} \mathbf{1}\_{[\varepsilon_{t-1} < 0\]} + \beta \sigma^2_{t-1}$$
 
 where:
 - $\gamma \geq 0$ is the leverage coefficient
-- $\mathbf{1}_{[\varepsilon_{t-1} < 0]}$ is an indicator function equal to 1 when $\varepsilon_{t-1} < 0$ (gamma influences the model only when returns are negative)
+- $\mathbf{1}\_{[\varepsilon_{t-1} < 0\]}$ is an indicator function equal to 1 when $\varepsilon_{t-1} < 0$ (gamma influences the model only when returns are negative)
 
 As seen above, the total impact of negative shocks is $(\alpha + \gamma)$, while positive shocks contribute only $\alpha$ [Engle and Ng (1993)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1993.tb05127.x).
 
 Finally, we note that GARCH and GJR-GARCH $h$-day forecasts are computed in the following way:
 
 GARCH Multi-Step Forecast:
-$$
-E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2
-$$
+
+$$E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2$$
 
 GJR-GARCH Multi-Step Forecast:
-$$
-E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta + \frac{\gamma}{2}) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2
-$$
+
+$$E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta + \frac{\gamma}{2}) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2$$
 
 where:
 - $h \ \epsilon \ \{5, 20, 25\}$
