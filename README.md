@@ -53,7 +53,10 @@ where:
 
 Lower QLIKE values indicate better forecasting performance.
 
-**Methodology Disclaimer**: Due to the absence of high-frequency intraday data, we evaluate 1-day forecasts against the realised volatility over three forecast horizons: 5-days, 20-days, and 25-days. This approach aims to reduce noise of single-day squared returns and provides a more stable benchmark for model comparison. The academic standard ([Hansen and Lunde, 2005, p.13](https://public.econ.duke.edu/~get/browse/courses/201/spr11/DOWNLOADS/VolatilityMeasures/SpecificlPapers/hansen_lunde_forecasting_rv_11.pdf)) is to use realised volatility calculated from intraday returns, which substantially reduces measurement error but requires high-frequency data which is not freely available in this case. Another implication of using daily data is that our forecasts are for 1-day ahead while we evaluate them for 5-day, 20-day, 25-day ahead realised volatility. 
+**Methodology Disclaimer**: Due to the absence of high-frequency intraday data, we evaluate our forecasts against the realised volatility over three forward looking forecast horizons: 5-days, 20-days, and 25-days. This approach aims to reduce noise of single-day squared returns and provides a more stable benchmark for model comparison. The academic standard ([Hansen and Lunde, 2005, p.13](https://public.econ.duke.edu/~get/browse/courses/201/spr11/DOWNLOADS/VolatilityMeasures/SpecificlPapers/hansen_lunde_forecasting_rv_11.pdf)) is to use realised volatility calculated from intraday returns, which substantially reduces measurement error but requires high-frequency data which is not freely available in this case. Another implication of using daily data is that our forecasts are for different time horizons depending on the model:
+- EWMA forecasts are 1-day ahead while we evaluate them for 5-day, 20-day, 25-day ahead realised volatility 
+- GARCH forecasts are 5-day, 20-day, and 25-day which matches our 5-day, 20-day, 25-day ahead realised volatility evaluation
+- LSTM targets are 5-day, 20-day, and 25-day which matches our 5-day, 20-day, 25-day ahead realised volatility evaluation
 
 ### 1. EWMA
 
@@ -70,15 +73,18 @@ Higher values of $\lambda$ assign more weight to past observations, resulting in
 
 #### EWMA Hyperparameter Tuning Methodology
 
-We performed calculated the QLIKE estimate for $\lambda \in \{0.80, 0.81, \ldots, 0.99\}$ for the three forecast horizons (5, 20, and 25 days) on the training set. Finally, we selected the optimal $\lambda$ parameter by minimising QLIKE on the training set.
+We calculated the QLIKE estimate for $\lambda \in \{0.80, 0.81, \ldots, 0.99\}$ for the three forecast horizons (5, 20, and 25 days) on the training set. Finally, we selected the optimal $\lambda$ parameter by minimising QLIKE on the training set.
 
 #### EWMA Lambda Selection Results
 
 **QLIKE vs Lambda by Horizon**
 
-| 5-Day Horizon | 20-Day Horizon | 25-Day Horizon |
-|:-------------:|:--------------:|:--------------:|
-| ![QLIKE 5-day](Figures/EWMA_QLIKE_h=5.png) | ![QLIKE 20-day](Figures/EWMA_QLIKE_h=20.png) | ![QLIKE 25-day](Figures/EWMA_QLIKE_h=25.png) |
+
+| Horizon | Plot |
+|:-------------:|:--------------:|
+| 5-Day | ![QLIKE 5-day](Figures/EWMA_QLIKE_h=5.png) |
+| 20-Day | ![QLIKE 20-day](Figures/EWMA_QLIKE_h=20.png) |
+| 25-Day | ![QLIKE 25-day](Figures/EWMA_QLIKE_h=25.png) |
 
 The optimal values based on training QLIKE minimisation were:
 
@@ -88,7 +94,7 @@ The optimal values based on training QLIKE minimisation were:
 | 20-day | 0.95 |
 | 25-day | 0.95 |
 
-### 2. GARCH
+### 2. GARCH and GJR-GARCH
 
 Generalised Autoregressive Conditional Heteroskedasticity (GARCH) is a statistical model used to estimate the volatility of financial returns by assuming that current variance depends on past variance and past shocks. Unlike EWMA which simply assign exponentially decreasing weights to past observations, GARCH captures "volatility clustering," where periods of high turbulence tend to follow one another, making it widely used in practice.
 
@@ -112,13 +118,28 @@ Given we are dealing with equity markets, we also include the GJR-GARCH model ([
 
 In the GJR-GARCH(1,1) specification we again assume that current variance depends on the three parameters lagged by 1 time period:
 
-$$\sigma^2_t = \omega + \alpha \varepsilon^2_{t-1} + \gamma \varepsilon^2_{t-1} \mathbf{1}\_{[\varepsilon_{t-1} < 0]} + \beta \sigma^2_{t-1}$$
+$$\sigma^2_t = \omega + \alpha \varepsilon^2_{t-1} + \gamma \varepsilon^2_{t-1} \mathbf{1}_{[\varepsilon_{t-1} < 0]} + \beta \sigma^2_{t-1}$$
 
 where:
 - $\gamma \geq 0$ is the leverage coefficient
-- $\mathbf{1}\_{[\varepsilon_{t-1} < 0]}$ is an indicator function equal to 1 when $\varepsilon_{t-1} < 0$ (gamma influences the model only when returns are negative)
+- $\mathbf{1}_{[\varepsilon_{t-1} < 0]}$ is an indicator function equal to 1 when $\varepsilon_{t-1} < 0$ (gamma influences the model only when returns are negative)
 
 As seen above, the total impact of negative shocks is $(\alpha + \gamma)$, while positive shocks contribute only $\alpha$ [Engle and Ng (1993)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1993.tb05127.x).
+
+Finally, we note that GARCH and GJR-GARCH $h$-day forecasts are computed in the following way:
+
+GARCH Multi-Step Forecast:
+$$
+E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2
+$$
+
+GJR-GARCH Multi-Step Forecast:
+$$
+E_t[\sigma_{t+h}^2] = \omega + (\alpha + \beta + \frac{\gamma}{2}) E_t[\sigma_{t+h-1}^2] \quad \text{for } h \ge 2
+$$
+
+where:
+- $h \ \epsilon \ \{5, 20, 25\}$
 
 #### GARCH and GJR-GARCH Selection Methodology
 
@@ -186,13 +207,17 @@ Our forward-looking pure LSTM directly predicts future realised variance over di
 **Features** (all backward-looking, available at time $t$):
 - Lagged returns (last 5 days, for recent shocks): $r_{t-1}, r_{t-2}, \ldots, r_{t-5}$
 - Lagged squared returns (arch effect): $r^2_{t-1}, r^2_{t-2}, \ldots, r^2_{t-5}$
-- Rolling volatilities at windows of 5, 10, and 20 days
-- Rolling variances at windows of 5, 10, and 20 days
+- Rolling volatilities at windows of 5, 10, and 22 days
+- Rolling variances at windows of 5, 10, and 22 days
 
 **Target**:
 $$\sigma^2_{\text{target},t} = \frac{1}{h}\sum_{i=1}^{h} r^2_{t+i}$$
 
 where $h$ is the forecast horizon (5, 20, or 25 days).
+
+| Pure LSTM Architecture |
+|:-------------:|
+| ![LSTM Architecture](Figures/LSTM.png) |
 
 #### Hybrid GARCH-LSTM
 
@@ -212,19 +237,23 @@ $$\hat{\sigma}^2_{\text{hybrid},t} = \hat{\sigma}^2_{\text{GJR},t} \times \hat{\
 
 where $\hat{\rho}_{\text{LSTM},t}$ is the model’s predicted correction factor.
 
+| Hybrid LSTM Architecture |
+|:-------------:|
+| ![Hybrid LSTM Architecture](Figures/Hybrid_LSTM.png) |
+
 ## Results
 
 ### Out-of-Sample Performance Summary
 
 | Horizon | EWMA | GARCH | GJR-GARCH | Best |
 |:---|:---:|:---:|:---:|:---:|
-| 5-day | 0.4222 | 0.4251 | **0.3969** | GJR-GARCH |
-| 20-day | 0.2049 | 0.1903 | **0.1529** | GJR-GARCH |
-| 25-day | 0.1866 | 0.1723 | **0.1332** | GJR-GARCH |
+| 5-day | **0.4222** | 0.4242 | 0.4250 | EWMA |
+| 20-day | 0.2049 | 0.1958 | **0.1922** | GJR-GARCH |
+| 25-day | 0.1866 | 0.1814 | **0.1771** | GJR-GARCH |
 
 *Lower QLIKE values indicate better performance.*
 
-GJR-GARCH(1,1) consistently outperforms both EWMA and standard GARCH(1,1) across all forecast horizons, confirming the importance of capturing leverage effects in equity volatility.
+GJR-GARCH(1,1) outperforms both EWMA and standard GARCH(1,1) at longer horizons (20-day and 25-day), confirming the importance of capturing leverage effects in equity volatility. However, we note that at the 5-day horizon, EWMA marginally outperforms both GARCH models.
 
 ### LSTM Performance
 
@@ -232,29 +261,29 @@ GJR-GARCH(1,1) consistently outperforms both EWMA and standard GARCH(1,1) across
 
 | Horizon | EWMA | GARCH | GJR-GARCH | LSTM (Pure) | Best |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| 5-day | 0.4222 | 0.4251 | **0.3969** | 0.5828 | GJR-GARCH |
-| 20-day | 0.2049 | 0.1903 | **0.1529** | 0.2494 | GJR-GARCH |
-| 25-day | 0.1866 | 0.1723 | **0.1332** | 0.2050 | GJR-GARCH |
+| 5-day | **0.4222** | 0.4242 | 0.4250 | 0.5828 | EWMA |
+| 20-day | 0.2049 | 0.1958 | **0.1922** | 0.2494 | GJR-GARCH |
+| 25-day | 0.1866 | 0.1814 | **0.1771** | 0.2050 | GJR-GARCH |
 
-Generally, the Pure LSTM model performs worse than all other models with the 5-day window displaying a significantly worse performance in absolute terms.
+Generally, the Pure LSTM model performs worse than all other models with the 5-day window displaying a significantly worse performance in absolute terms. We note that LSTM performance converges to other models as the horizon increases.
 
 #### Hybrid GARCH-LSTM
 
 | Horizon | EWMA | GARCH | GJR-GARCH | LSTM Hybrid | Best |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| 5-day | 0.4222 | 0.4251 | **0.3969** | 0.5906 | GJR-GARCH |
-| 20-day | 0.2049 | 0.1903 | **0.1529** | 0.2638 | GJR-GARCH |
-| 25-day | 0.1866 | 0.1723 | **0.1332** | 0.2079 | GJR-GARCH |
+| 5-day | **0.4222** | 0.4242 | 0.4250 | 0.5842 | EWMA |
+| 20-day | 0.2049 | 0.1958 | **0.1922** | 0.2425 | GJR-GARCH |
+| 25-day | 0.1866 | 0.1814 | **0.1771** | 0.1881 | GJR-GARCH |
 
-Similarly to the Pure LSTM model, the Hybrid GARCH-LSTM model performs worse than all other models, however, it has a very similar performance to the Pure LSTM model on the 25-day window.
+Similarly to the Pure LSTM model, the Hybrid GARCH-LSTM model performs worse than all other traditional models. However, the Hybrid approach shows notable improvement at the 25-day horizon (0.1881), coming close to the traditional models' performance (only 6% worse than GJR-GARCH).
 
 ### Comparative Performance Table
 
 | Horizon | EWMA | GARCH | LSTM (Pure) | LSTM Hybrid | vs. |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| 5-day | 0.06 | 0.07 | 0.47 | 0.49 | GJR-GARCH |
-| 20-day | 0.34 | 0.25 | 0.63 | 0.73 | GJR-GARCH |
-| 25-day | 0.40 | 0.30 | 0.54 | 0.56 | GJR-GARCH |
+| 5-day | -0.01 | -0.00 | 0.37 | 0.37 | GJR-GARCH |
+| 20-day | 0.07 | 0.02 | 0.30 | 0.26 | GJR-GARCH |
+| 25-day | 0.05 | 0.02 | 0.16 | 0.06 | GJR-GARCH |
 
 ### Plotted Forecasts by chosen Horizon
 
@@ -263,8 +292,8 @@ Similarly to the Pure LSTM model, the Hybrid GARCH-LSTM model performs worse tha
 | Model | Plot |
 |:-------------:|:--------------:|
 | **EWMA** | ![5-Day EWMA](Figures/Forward_5_Day_Volatility_Realised_vs_EWMA.png) |
-| **GARCH(1,1)** | ![5-Day GARCH((1,1)](Figures/Forward_5_Day_Volatility_Realised_vs_GARCH.png) |
-| **GJR-GARCH(1,1,1)** | ![5-Day GJR-GARCH(1,1,1)](Figures/Forward_5_Day_Volatility_Realised_vs_GJR.png) |
+| **GARCH(1,1)** | ![5-Day GARCH(1,1)](Figures/Forward_5_Day_Volatility_Realised_vs_GARCH.png) |
+| **GJR-GARCH(1,1)** | ![5-Day GJR-GARCH(1,1)](Figures/Forward_5_Day_Volatility_Realised_vs_GJR.png) |
 | **Pure LSTM** | ![5-Day Forward LSTM](Figures/Forward_5_Day_Volatility_Realised_vs_LSTM.png) |
 | **Hybrid GARCH-LSTM** | ![5-Day Hybrid](Figures/Forward_5_Day_Volatility_Realised_vs_LSTM_hybrid.png) |
 
@@ -273,8 +302,8 @@ Similarly to the Pure LSTM model, the Hybrid GARCH-LSTM model performs worse tha
 | Model | Plot |
 |:-------------:|:--------------:|
 | **EWMA** | ![20-Day EWMA](Figures/Forward_20_Day_Volatility_Realised_vs_EWMA.png) |
-| **GARCH(1,1)** | ![20-Day GARCH((1,1)](Figures/Forward_20_Day_Volatility_Realised_vs_GARCH.png) |
-| **GJR-GARCH(1,1,1)** | ![20-Day GJR-GARCH(1,1,1)](Figures/Forward_20_Day_Volatility_Realised_vs_GJR.png) |
+| **GARCH(1,1)** | ![20-Day GARCH(1,1)](Figures/Forward_20_Day_Volatility_Realised_vs_GARCH.png) |
+| **GJR-GARCH(1,1)** | ![20-Day GJR-GARCH(1,1)](Figures/Forward_20_Day_Volatility_Realised_vs_GJR.png) |
 | **Pure LSTM** | ![20-Day Forward LSTM](Figures/Forward_20_Day_Volatility_Realised_vs_LSTM.png) |
 | **Hybrid GARCH-LSTM** | ![20-Day Hybrid](Figures/Forward_20_Day_Volatility_Realised_vs_LSTM_hybrid.png) |
 
@@ -283,32 +312,30 @@ Similarly to the Pure LSTM model, the Hybrid GARCH-LSTM model performs worse tha
 | Model | Plot |
 |:-------------:|:--------------:|
 | **EWMA** | ![25-Day EWMA](Figures/Forward_25_Day_Volatility_Realised_vs_EWMA.png) |
-| **GARCH(1,1)** | ![25-Day GARCH((1,1)](Figures/Forward_25_Day_Volatility_Realised_vs_GARCH.png) |
-| **GJR-GARCH(1,1,1)** | ![25-Day GJR-GARCH(1,1,1)](Figures/Forward_25_Day_Volatility_Realised_vs_GJR.png) |
+| **GARCH(1,1)** | ![25-Day GARCH(1,1)](Figures/Forward_25_Day_Volatility_Realised_vs_GARCH.png) |
+| **GJR-GARCH(1,1)** | ![25-Day GJR-GARCH(1,1)](Figures/Forward_25_Day_Volatility_Realised_vs_GJR.png) |
 | **Pure LSTM** | ![25-Day Forward LSTM](Figures/Forward_25_Day_Volatility_Realised_vs_LSTM.png) |
 | **Hybrid GARCH-LSTM** | ![25-Day Hybrid](Figures/Forward_25_Day_Volatility_Realised_vs_LSTM_hybrid.png) |
 
 ### Key Observations
 
-1. **GJR-GARCH dominates across all horizons and comparisons**: The leverage effect captured by the asymmetric term provides consistent forecasting improvements.
+1. **GARCH models dominate across all horizons and comparisons**: The leverage effect captured by the asymmetric term in GJR-GARCH also provides consistent forecasting improvements for longer horizons.
 
-2. **LSTM underperforms traditional models**: Both the LSTM and hybrid LSTM architectures fail to outperform GJR-GARCH(1,1,1). This is particularly evident at the 20-day horizon, where, in relative terms, the LSTM and Hybrid LSTM QLIKE (0.25, 0.26) is substantially worse than GJR-GARCH (0.15).
+2. **LSTM underperforms traditional models**: Both the LSTM and Hybrid LSTM architectures fail to outperform GJR-GARCH(1,1). This is particularly evident at the 5-day horizon, where, in relative terms, the LSTM and Hybrid LSTM QLIKE (0.5828, 0.5842) is substantially worse than GJR-GARCH (0.4250).
 
 3. **Hybrid approach does not improve upon GJR-GARCH**: Despite incorporating GJR-GARCH forecasts as features, the LSTM adjustment mechanism degrades rather than improves performance.
 
-4. **Performance gap is narrowest for short horizons**: While GJR-GARCH remains superior, the LSTM models show  better (though still inferior) relative performance at a 5-day horizon compared to their 20-day and 25-day horizons relative performance (with the 25-day window being the second best in terms of relative performance).
-
-5. **Hybrid approach seems to perform in line with the Pure LSTM at 5- and 25-day horizons**: While the Pure LSTM approach performs better than the Hybrid approach at all horizons, the performance gap is much less significant at 5- and 25-day windows.    
+4. **Performance gap narrows as horizon increases**: While GJR-GARCH remains superior, the LSTM models show better (though still inferior) relative performance as we move from the 5-day horizon to the 20-day and 25-day horizons. Indeed, the Hybrid LSTM performs closest to GJR-GARCH at the 25-day horizon with only a 6% performance gap in relative terms.
 
 ## Conclusion
 
-This study provides evidence that for daily equity volatility forecasting, parsimonious GARCH-family models—specifically GJR-GARCH(1,1,1) outperform more complex LSTM neural network architectures when fed with the same time series as inputs. This finding aligns with the conclusions of [Hansen and Lunde (2005)](https://onlinelibrary.wiley.com/doi/full/10.1002/jae.800), who found that simple GARCH(1,1) is difficult to beat in out-of-sample forecasting.
+This study provides evidence that for daily equity volatility forecasting, parsimonious GARCH-family models—specifically GJR-GARCH(1,1) generally outperform more complex LSTM neural network architectures when fed with the same time series as inputs, particularly at shorter horizons. Overall, these findings aligns with the conclusions of [Hansen and Lunde (2005)](https://onlinelibrary.wiley.com/doi/full/10.1002/jae.800), who found that simple GARCH(1,1) is difficult to beat in out-of-sample forecasting. Interestingly, at the 5-day horizon EWMA marginally outperforms GARCH approaches, however, when looking at the plotted forecasts, it is clear that this is potentially driven by EWMA being a much smoother estimate of volatility leading it to underestimate volatility slightly less often than GARCH models. 
 
 We note that, we do not consider the negative LSTM results as evidence of fundamental limitations of deep learning models for volatility forecasting, indeed, these results reveal several key considerations:
 
 1. **Noise**: Daily returns contain substantial noise, and the relatively small sample size (approximately 2,700 observations) may be insufficient for LSTM to learn robust patterns beyond what GARCH already captures.
 
-2. **Feature engineering**: As mentioned, the features used were derived exclusively from the price data which means they are highly correlated and may not provide information beyond what is already present in the GARCH structure. Indeed, using only returns as a basis for features significantly limits the capabilities of the LSTM which could take many other features as inputs(such as volume, sentiment, VIX, etc.). However, this would have made a comparison to econometric models more difficult.  
+2. **Feature engineering**: As mentioned, the features used were derived exclusively from the price data which means they are highly correlated and may not provide information beyond what is already present in the GARCH structure. Indeed, using only returns as a basis for features significantly limits the capabilities of the LSTM which could take many other features as inputs(such as volume, VIX, rates etc.). However, this would have made a comparison to econometric models more difficult.  
 
 3. **Evaluation methodology**: Using averaged squared daily returns as a volatility proxy introduces measurement error that may disadvantage models attempting to capture more subtle patterns.
 
@@ -330,3 +357,7 @@ We note that, we do not consider the negative LSTM results as evidence of fundam
 ## License
 
 MIT License
+
+---
+
+README Author: Thomas Fouilloux
